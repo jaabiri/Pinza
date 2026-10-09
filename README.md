@@ -102,13 +102,13 @@ Delete or move a file and its photo falls off by itself.
 
 Pre-built installers come from the **Pinza** GitHub Actions workflow: open the
 latest run and download `pinza-Linux`, `pinza-macOS` or `pinza-Windows`.
-Pushing a tag like `pinza-v0.1.0` also attaches them to a draft release.
+Pushing a tag like `v0.1.0` also attaches them to a draft release.
 The builds are not signed yet. See the notes for each system below.
 
 ### Omarchy / Hyprland
 
 ```sh
-git clone <this repo> && cd <repo>/pinza
+git clone https://github.com/jaabiri/pinza && cd pinza
 scripts/install-linux.sh
 ```
 
@@ -199,7 +199,6 @@ no build step). Linux also needs the libraries listed in
 `scripts/install-linux.sh`.
 
 ```sh
-cd pinza
 npm install
 npm run dev        # run it
 npm run build      # installers in src-tauri/target/release/bundle/
@@ -209,6 +208,10 @@ Plain `cargo run --manifest-path src-tauri/Cargo.toml` works too.
 `RUST_LOG=pinza=debug` shows what it is watching and hanging.
 
 ## How it works
+
+Learning Rust? [`docs/LEARNING.md`](docs/LEARNING.md) walks through the
+techniques, the system APIs and the crates used here, with links into the
+code and to deeper reading.
 
 | File | Role |
 |:--|:--|
