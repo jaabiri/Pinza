@@ -1,0 +1,362 @@
+:root {
+  --glass: rgba(255, 255, 255, 0.62);
+  --glass-edge-top: rgba(255, 255, 255, 0.85);
+  --glass-edge-bottom: rgba(255, 255, 255, 0.2);
+  --hairline: rgba(0, 0, 0, 0.12);
+  --ink: #1d1d1f;
+  --ink-soft: rgba(29, 29, 31, 0.7);
+  --rope: #8c8c8c;
+  --shadow: rgba(0, 0, 0, 0.18);
+  --shadow-hover: rgba(0, 0, 0, 0.26);
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --glass: rgba(44, 44, 48, 0.6);
+    --glass-edge-top: rgba(255, 255, 255, 0.35);
+    --glass-edge-bottom: rgba(255, 255, 255, 0.06);
+    --hairline: rgba(0, 0, 0, 0.4);
+    --ink: #f5f5f7;
+    --ink-soft: rgba(245, 245, 247, 0.72);
+    --shadow: rgba(0, 0, 0, 0.35);
+    --shadow-hover: rgba(0, 0, 0, 0.5);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  font-family: system-ui, -apple-system, "Segoe UI", Inter, "Noto Sans", sans-serif;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: default;
+}
+
+/* The few pixels at the top that notice the pointer on Linux. */
+#edge {
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: 4px;
+}
+
+/* Tucked away, the whole line waits above the top edge and slides down,
+   the way an auto-hiding Dock does. */
+#line {
+  position: absolute;
+  inset: 0;
+  transform: translateY(-232px);
+  transition: transform 0.22s cubic-bezier(0.55, 0, 1, 0.45);
+  pointer-events: none;
+}
+
+#line.down {
+  transform: translateY(0);
+  transition: transform 0.46s cubic-bezier(0.2, 1.25, 0.35, 1);
+}
+
+#rope {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+#rope path {
+  fill: none;
+}
+
+.rope-shadow {
+  stroke: rgba(0, 0, 0, 0.22);
+  stroke-width: 1.4;
+  transform: translateY(1.2px);
+}
+
+.rope-core {
+  stroke: var(--rope);
+  stroke-width: 1.2;
+}
+
+.rope-shine {
+  stroke: rgba(255, 255, 255, 0.45);
+  stroke-width: 0.4;
+  transform: translateY(-0.35px);
+}
+
+#hint {
+  position: absolute;
+  left: 50%;
+  top: 34px;
+  transform: translateX(-50%);
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-soft);
+  background: var(--glass);
+  box-shadow: inset 0 0.75px 0 var(--glass-edge-top), 0 0 0 0.5px var(--hairline), 0 4px 12px var(--shadow);
+  backdrop-filter: blur(18px) saturate(1.6);
+  -webkit-backdrop-filter: blur(18px) saturate(1.6);
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+#hint.shown {
+  opacity: 1;
+}
+
+/* One photo hanging from its clip. */
+.peg {
+  position: absolute;
+  width: 150px;
+  transition:
+    left 0.55s cubic-bezier(0.3, 1.25, 0.45, 1),
+    top 0.55s cubic-bezier(0.3, 1.25, 0.45, 1),
+    transform 0.42s cubic-bezier(0.2, 1.3, 0.4, 1),
+    opacity 0.3s ease;
+  pointer-events: none;
+}
+
+.peg.arriving {
+  transform: translateY(-46px);
+  opacity: 0;
+  transition: none;
+}
+
+.peg.falling {
+  transition:
+    transform 0.6s cubic-bezier(0.5, 0, 0.9, 0.5),
+    opacity 0.6s ease-in;
+  opacity: 0;
+}
+
+.swing {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transform-origin: 50% 0;
+  will-change: transform;
+}
+
+/* A minimal aluminium clip with the slot the line passes through. */
+.pin {
+  position: relative;
+  z-index: 1;
+  width: 9px;
+  height: 26px;
+  border-radius: 3.5px;
+  background: linear-gradient(90deg, #b3b3b3 0%, #ededed 35%, #d1d1d1 65%, #9e9e9e 100%);
+  box-shadow:
+    inset 0 0.6px 0 rgba(255, 255, 255, 0.9),
+    inset 0 -0.6px 0 rgba(0, 0, 0, 0.18),
+    0 1.5px 2px rgba(0, 0, 0, 0.3);
+}
+
+.pin::after {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 8.5px;
+  width: 5px;
+  height: 1.4px;
+  border-radius: 1px;
+  background: rgba(0, 0, 0, 0.32);
+}
+
+.card {
+  position: relative;
+  margin-top: -12px;
+  padding: 4px;
+  border-radius: 16px;
+  background: var(--glass);
+  backdrop-filter: blur(22px) saturate(1.7);
+  -webkit-backdrop-filter: blur(22px) saturate(1.7);
+  box-shadow:
+    inset 0 0.75px 0 var(--glass-edge-top),
+    inset 0 -0.5px 0 var(--glass-edge-bottom),
+    0 0 0 0.5px var(--hairline),
+    0 5px 10px var(--shadow);
+  transform-origin: 50% 0;
+  transition:
+    transform 0.3s cubic-bezier(0.3, 1.5, 0.5, 1),
+    box-shadow 0.18s ease,
+    opacity 0.2s ease;
+  pointer-events: auto;
+}
+
+.card img {
+  display: block;
+  border-radius: 12px;
+  box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.18);
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
+
+.card:hover {
+  transform: scale(1.035);
+  box-shadow:
+    inset 0 0.75px 0 var(--glass-edge-top),
+    inset 0 -0.5px 0 var(--glass-edge-bottom),
+    0 0 0 0.5px var(--hairline),
+    0 8px 14px var(--shadow-hover);
+}
+
+/* Holding presses the photo in slowly, building up to something. */
+.card.pressing {
+  transform: scale(0.95);
+  transition: transform 0.45s ease-in-out;
+}
+
+.card.dragging {
+  opacity: 0.45;
+}
+
+.x {
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--ink);
+  background: var(--glass);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  box-shadow: inset 0 0.75px 0 var(--glass-edge-top), 0 0 0 0.5px var(--hairline);
+  opacity: 0;
+  transform: scale(0.6);
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease;
+}
+
+.card:hover .x {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.card.dragging .x {
+  opacity: 0;
+}
+
+.x svg {
+  width: 8px;
+  height: 8px;
+}
+
+.copied {
+  position: absolute;
+  left: 50%;
+  bottom: -16px;
+  transform: translate(-50%, -4px);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--glass);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  box-shadow: inset 0 0.75px 0 var(--glass-edge-top), 0 0 0 0.5px var(--hairline), 0 3px 8px var(--shadow);
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
+}
+
+.card.copied-now .copied {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+/* Right click on Linux: the photo's actions in a small glass bar under it.
+   (macOS and Windows use a native menu.) */
+#actions {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--glass);
+  backdrop-filter: blur(22px) saturate(1.7);
+  -webkit-backdrop-filter: blur(22px) saturate(1.7);
+  box-shadow: inset 0 0.75px 0 var(--glass-edge-top), 0 0 0 0.5px var(--hairline), 0 6px 16px var(--shadow);
+  opacity: 0;
+  transform: translateY(-4px) scale(0.96);
+  transition:
+    opacity 0.14s ease,
+    transform 0.14s ease;
+  pointer-events: none;
+}
+
+#actions.open {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+
+#actions button {
+  width: 28px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  color: var(--ink);
+  background: transparent;
+}
+
+#actions button:hover {
+  background: rgba(127, 127, 127, 0.18);
+}
+
+#actions button.danger:hover {
+  color: #fff;
+  background: #e5484d;
+}
+
+#actions svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+#actions i {
+  width: 1px;
+  height: 16px;
+  margin: 0 2px;
+  background: var(--hairline);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #line,
+  #line.down,
+  .peg {
+    transition-duration: 0.01s;
+  }
+}

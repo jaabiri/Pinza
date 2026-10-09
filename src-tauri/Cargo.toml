@@ -1,0 +1,45 @@
+[package]
+name = "pinza"
+version = "0.1.0"
+description = "Your screenshots, pegged to a line across the top of the screen."
+license = "MIT"
+edition = "2021"
+rust-version = "1.77"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "image-png", "macos-private-api"] }
+tauri-plugin-opener = "2"
+tauri-plugin-single-instance = "2"
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-autostart = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+notify = "8"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "tiff", "bmp"] }
+base64 = "0.22"
+arboard = { version = "3", features = ["wayland-data-control"] }
+trash = "5"
+dirs = "6"
+drag = "2"
+log = "0.4"
+env_logger = "0.11"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+gtk = "0.18"
+gtk-layer-shell = { version = "0.8", features = ["v0_6"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+xattr = "1"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true
+
+# Decoding screenshots is slow without optimisations, even while developing.
+[profile.dev.package."*"]
+opt-level = 2
