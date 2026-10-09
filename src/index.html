@@ -28,15 +28,13 @@
       </svg>
       <div id="hint">Take a screenshot and it will hang here</div>
       <div id="pegs"></div>
-      <div id="actions" role="menu" aria-label="Photo actions">
-        <button data-act="copy" title="Copy" aria-label="Copy"><svg viewBox="0 0 16 16"><rect x="5" y="5" width="8.5" height="8.5" rx="2"/><path d="M10.5 5V3.5a1.5 1.5 0 0 0-1.5-1.5H4A1.5 1.5 0 0 0 2.5 3.5V9A1.5 1.5 0 0 0 4 10.5h1"/></svg></button>
-        <button data-act="open" title="Open" aria-label="Open"><svg viewBox="0 0 16 16"><path d="M9 2.5h4.5V7M13.5 2.5 7.5 8.5M11.5 9.5v3a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3"/></svg></button>
-        <button data-act="edit" title="Mark Up" aria-label="Mark Up"><svg viewBox="0 0 16 16"><path d="M10.5 2.5l3 3-8 8H2.5v-3z"/></svg></button>
-        <button data-act="show_in_folder" title="Show in Folder" aria-label="Show in Folder"><svg viewBox="0 0 16 16"><path d="M2 4.5a1 1 0 0 1 1-1h3.2l1.5 1.5H13a1 1 0 0 1 1 1V12a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z"/></svg></button>
-        <i></i>
-        <button data-act="take_down" title="Take Down" aria-label="Take Down"><svg viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
-        <button data-act="trash" title="Move to Trash" aria-label="Move to Trash" class="danger"><svg viewBox="0 0 16 16"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.1a1 1 0 0 0 1 .9h3.8a1 1 0 0 0 1-.9l.6-8.1"/></svg></button>
+      <div id="actions" role="menu" aria-label="Photo actions"></div>
+      <div id="qr" role="dialog" aria-label="Send to phone">
+        <div class="code"></div>
+        <div class="words"><b>Scan with your phone</b><span></span></div>
       </div>
+      <button id="tag" title="Next line (Tab)"></button>
+      <div id="toast" role="status" aria-live="polite"></div>
     </div>
     <script src="main.js"></script>
   </body>

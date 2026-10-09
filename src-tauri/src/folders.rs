@@ -5,12 +5,61 @@ use crate::config::Config;
 use std::path::{Path, PathBuf};
 
 const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "gif", "webp", "tif", "tiff", "bmp"];
+pub const VIDEO_EXTENSIONS: &[&str] = &["mp4", "mov", "webm", "mkv", "m4v"];
 
-pub fn screenshot_folders(cfg: &Config) -> Vec<PathBuf> {
-    let wanted: Vec<PathBuf> = if cfg.folders.is_empty() {
+/// The folders each line watches, in the order of `Config::line_specs`.
+pub fn line_folders(cfg: &Config) -> Vec<Vec<PathBuf>> {
+    cfg.line_specs()
+        .iter()
+        .enumerate()
+        .map(|(i, spec)| {
+            if i == 0 {
+                let mut v = screenshot_folders(&spec.folders);
+                for dir in recording_folders(&spec.folders) {
+                    if !v.contains(&dir) {
+                        v.push(dir);
+                    }
+                }
+                v
+            } else {
+                spec.folders.iter().map(|p| expand_tilde(p)).filter(|p| p.is_dir()).collect()
+            }
+        })
+        .collect()
+}
+
+/// Screen recordings, when the folders are not set by hand.
+fn recording_folders(configured: &[PathBuf]) -> Vec<PathBuf> {
+    if !configured.is_empty() {
+        return Vec::new();
+    }
+    let mut v = Vec::new();
+    #[cfg(target_os = "linux")]
+    {
+        // Omarchy's screen recorder writes to $OMARCHY_SCREENRECORD_DIR or Videos.
+        if let Some(dir) = std::env::var_os("OMARCHY_SCREENRECORD_DIR").filter(|d| !d.is_empty()) {
+            v.push(expand_tilde(Path::new(&dir)));
+        }
+        if let Some(videos) = dirs::video_dir() {
+            v.push(videos.join("Screencasts"));
+            v.push(videos);
+        }
+    }
+    #[cfg(target_os = "windows")]
+    if let Some(videos) = dirs::video_dir() {
+        // Snipping Tool's recordings.
+        v.push(videos.join("Screen Recordings"));
+    }
+    // macOS saves recordings next to screenshots.
+    v.retain(|d| d.is_dir());
+    v
+}
+
+pub fn screenshot_folders(configured: &[PathBuf]) -> Vec<PathBuf> {
+    let wanted: Vec<PathBuf> = if configured.is_empty() {
         default_folders()
     } else {
-        cfg.folders.iter().map(|p| expand_tilde(p)).collect()
+        configured.iter().map(|p| expand_tilde(p)).collect()
     };
     let mut out: Vec<PathBuf> = Vec::new();
     for dir in wanted {
@@ -101,11 +150,26 @@ pub fn expand_tilde(p: &Path) -> PathBuf {
     }
 }
 
+pub fn is_video(path: &Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| VIDEO_EXTENSIONS.contains(&e.to_ascii_lowercase().as_str()))
+}
+
+/// Pictures and screen recordings, not hidden or temporary files.
+pub fn is_media(path: &Path) -> bool {
+    is_image(path) || (is_video(path) && !is_hidden(path))
+}
+
+fn is_hidden(path: &Path) -> bool {
+    path.file_name().and_then(|n| n.to_str()).is_none_or(|n| n.starts_with('.'))
+}
+
 pub fn is_image(path: &Path) -> bool {
     let hidden = path
         .file_name()
         .and_then(|n| n.to_str())
-        .map_or(true, |n| n.starts_with('.'));
+        .is_none_or(|n| n.starts_with('.'));
     let ext_ok = path
         .extension()
         .and_then(|e| e.to_str())
@@ -116,7 +180,7 @@ pub fn is_image(path: &Path) -> bool {
 /// On the macOS Desktop only real screenshots count, tagged by the system with
 /// an extended attribute. Anywhere else any new image counts.
 pub fn is_candidate(path: &Path, folder: &Path) -> bool {
-    if !is_image(path) {
+    if !is_media(path) {
         return false;
     }
     #[cfg(target_os = "macos")]

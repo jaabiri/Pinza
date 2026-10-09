@@ -2,6 +2,12 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "The line window",
-  "windows": ["line"],
-  "permissions": ["core:default"]
+  "windows": [
+    "line",
+    "search"
+  ],
+  "permissions": [
+    "core:default",
+    "core:window:allow-hide"
+  ]
 }

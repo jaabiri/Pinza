@@ -5,31 +5,43 @@ use std::process::Command;
 use std::sync::mpsc;
 use std::thread;
 
+pub enum Clip {
+    Image(PathBuf),
+    Text(String),
+    /// A screen recording goes on the clipboard as a file.
+    Files(Vec<PathBuf>),
+}
+
 /// The clipboard lives on its own thread for the whole run: on Linux the
 /// copied image is served by whoever owns the clipboard, so it must outlive
 /// the click that put it there.
-pub struct Clipboard(mpsc::Sender<PathBuf>);
+pub struct Clipboard(mpsc::Sender<Clip>);
 
 impl Clipboard {
     pub fn new() -> Self {
-        let (tx, rx) = mpsc::channel::<PathBuf>();
+        let (tx, rx) = mpsc::channel::<Clip>();
         thread::spawn(move || {
             let mut board = None;
-            for path in rx {
+            for clip in rx {
                 if board.is_none() {
                     board = arboard::Clipboard::new().map_err(|e| log::error!("No clipboard: {e}")).ok();
                 }
                 let Some(b) = board.as_mut() else { continue };
-                if let Err(e) = copy_image(b, &path) {
-                    log::error!("Could not copy {}: {e}", path.display());
+                let result = match clip {
+                    Clip::Image(path) => copy_image(b, &path),
+                    Clip::Text(text) => b.set_text(text).map_err(|e| e.to_string()),
+                    Clip::Files(paths) => b.set().file_list(&paths).map_err(|e| e.to_string()),
+                };
+                if let Err(e) = result {
+                    log::error!("Could not copy: {e}");
                 }
             }
         });
         Self(tx)
     }
 
-    pub fn copy(&self, path: &Path) {
-        let _ = self.0.send(path.to_path_buf());
+    pub fn put(&self, clip: Clip) {
+        let _ = self.0.send(clip);
     }
 }
 
@@ -92,4 +104,32 @@ pub fn trash(path: &Path) -> bool {
             false
         }
     }
+}
+
+/// Runs one of your own actions on a file. Arguments are passed as they
+/// are, without a shell, with `{path}`, `{name}` and `{dir}` filled in.
+/// Returns what it printed.
+pub fn run_custom(command: &[String], path: &Path) -> Result<String, String> {
+    let (program, args) = command.split_first().ok_or("This action has no command")?;
+    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let dir = path.parent().map(|d| d.to_string_lossy().into_owned()).unwrap_or_default();
+    let fill = |s: &str| {
+        s.replace("{path}", &path.to_string_lossy()).replace("{name}", &name).replace("{dir}", &dir)
+    };
+    let program = crate::folders::expand_tilde(Path::new(&fill(program)));
+    let out = Command::new(program)
+        .args(args.iter().map(|a| fill(a)))
+        .output()
+        .map_err(|e| e.to_string())?;
+    if out.status.success() {
+        Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+    } else {
+        let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        Err(if err.is_empty() { format!("exited with {}", out.status) } else { err })
+    }
+}
+
+/// The first link in some text, if any.
+pub fn find_link(text: &str) -> Option<String> {
+    text.split_whitespace().find(|w| w.starts_with("http://") || w.starts_with("https://")).map(str::to_string)
 }

@@ -6,12 +6,13 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 if command -v pacman >/dev/null; then
-  sudo pacman -S --needed --noconfirm rust webkit2gtk-4.1 gtk3 gtk-layer-shell libayatana-appindicator
+  sudo pacman -S --needed --noconfirm rust webkit2gtk-4.1 gtk3 gtk-layer-shell libayatana-appindicator \
+    tesseract tesseract-data-eng ffmpeg
 elif command -v apt-get >/dev/null; then
   sudo apt-get install -y cargo libwebkit2gtk-4.1-dev libgtk-3-dev libgtk-layer-shell-dev \
-    libayatana-appindicator3-dev librsvg2-dev
+    libayatana-appindicator3-dev librsvg2-dev tesseract-ocr ffmpeg
 elif command -v dnf >/dev/null; then
-  sudo dnf install -y cargo webkit2gtk4.1-devel gtk3-devel gtk-layer-shell-devel libappindicator-gtk3-devel
+  sudo dnf install -y cargo webkit2gtk4.1-devel gtk3-devel gtk-layer-shell-devel libappindicator-gtk3-devel tesseract ffmpeg
 fi
 
 cargo build --release --manifest-path src-tauri/Cargo.toml --features tauri/custom-protocol
@@ -41,6 +42,7 @@ On Hyprland (Omarchy), add to ~/.config/hypr/hyprland.conf:
 
     exec-once = pinza
     bind = CTRL ALT, T, exec, pinza toggle
+    bind = CTRL ALT, F, exec, pinza search
 
 then run `hyprctl reload` and start it once with `pinza &`.
 NEXT

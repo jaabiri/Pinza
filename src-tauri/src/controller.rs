@@ -20,6 +20,9 @@ const TICK: Duration = Duration::from_millis(40);
 const EDGE_DWELL: Duration = Duration::from_millis(180);
 const LEAVE_GRACE: Duration = Duration::from_millis(600);
 const HIDE_AFTER_TUCK: Duration = Duration::from_millis(300);
+/// Opened with the shortcut, the line waits this long for a key or the
+/// pointer before tucking away, so it never holds the keyboard for long.
+const PIN_IDLE: Duration = Duration::from_secs(8);
 
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Debug)]
 #[serde(rename_all = "lowercase")]
@@ -54,6 +57,11 @@ pub enum Reveal {
 #[derive(Default)]
 pub struct Ctl {
     pub revealed: bool,
+    /// Full screen app or screen sharing: stay away.
+    pub suppressed: bool,
+    /// Holding the keyboard, after opening with the shortcut.
+    keyboard: bool,
+    pin_until: Option<Instant>,
     pinned: bool,
     visited: bool,
     pub inside: bool,
@@ -74,26 +82,84 @@ pub fn reveal(app: &AppHandle, how: Reveal) {
     let st = app.state::<AppState>();
     let mut c = st.ctl.lock().unwrap();
     let now = Instant::now();
+    let pin = matches!(how, Reveal::Pin);
+    // Asked for on purpose, the line shows even over full screen.
+    if c.suppressed && !pin {
+        return;
+    }
     match how {
         Reveal::Peek(d) => c.peek_until = Some(c.peek_until.map_or(now + d, |t| t.max(now + d))),
         Reveal::Pin => {
             c.pinned = true;
             c.visited = false;
+            c.pin_until = Some(now + PIN_IDLE);
         }
         Reveal::Hover => c.visited = true,
     }
     c.away_since = None;
-    if c.revealed {
+    let grab = pin && !c.keyboard;
+    if grab {
+        c.keyboard = true;
+    }
+    let was = c.revealed;
+    c.revealed = true;
+    if !was {
+        c.generation += 1;
+    }
+    drop(c);
+    if !was {
+        if let Some(win) = app.get_webview_window(WINDOW) {
+            #[cfg(target_os = "macos")]
+            let _ = app.show();
+            place(app);
+            let _ = win.show();
+        }
+        let _ = app.emit("reveal", true);
+    }
+    if grab {
+        keyboard(app, true);
+    }
+}
+
+/// Takes the keyboard so the arrows, Enter and friends work, or gives it back.
+fn keyboard(app: &AppHandle, take: bool) {
+    let Some(win) = app.get_webview_window(WINDOW) else { return };
+    let _ = app.emit("keyboard", take);
+    #[cfg(target_os = "linux")]
+    if app.state::<AppState>().layer_shell {
+        crate::linux::set_keyboard(&win, take);
         return;
     }
-    c.revealed = true;
-    c.generation += 1;
-    drop(c);
-    if let Some(win) = app.get_webview_window(WINDOW) {
-        place(app);
-        let _ = win.show();
+    let _ = win.set_focusable(take);
+    if take {
+        let _ = win.set_focus();
     }
-    let _ = app.emit("reveal", true);
+}
+
+/// A key press or a click keeps a line opened with the shortcut down.
+pub fn activity(app: &AppHandle) {
+    let st = app.state::<AppState>();
+    let mut c = st.ctl.lock().unwrap();
+    if c.pinned {
+        c.pin_until = Some(Instant::now() + PIN_IDLE);
+    }
+}
+
+/// Full screen or screen sharing started or stopped.
+pub fn set_suppressed(app: &AppHandle, on: bool) {
+    let st = app.state::<AppState>();
+    let on = on && st.config.lock().unwrap().hide_in_full_screen;
+    let mut c = st.ctl.lock().unwrap();
+    if c.suppressed == on {
+        return;
+    }
+    c.suppressed = on;
+    let pinned = c.pinned;
+    drop(c);
+    log::info!("Staying out of the way: {on}");
+    if on && !pinned {
+        tuck(app);
+    }
 }
 
 pub fn tuck(app: &AppHandle) {
@@ -104,6 +170,8 @@ pub fn tuck(app: &AppHandle) {
     }
     c.revealed = false;
     c.pinned = false;
+    c.pin_until = None;
+    let had_keyboard = std::mem::take(&mut c.keyboard);
     c.visited = false;
     c.inside = false;
     c.peek_until = None;
@@ -112,6 +180,9 @@ pub fn tuck(app: &AppHandle) {
     let generation = c.generation;
     drop(c);
     let _ = app.emit("reveal", false);
+    if had_keyboard {
+        keyboard(app, false);
+    }
 
     // On macOS and Windows the window is put away once the slide is over. On
     // Linux it stays, a few pixels tall, to catch the pointer at the edge.
@@ -122,8 +193,14 @@ pub fn tuck(app: &AppHandle) {
             let st = app.state::<AppState>();
             let c = st.ctl.lock().unwrap();
             if !c.revealed && c.generation == generation {
+                drop(c);
                 if let Some(win) = app.get_webview_window(WINDOW) {
                     let _ = win.hide();
+                }
+                // Gives focus back to the app you were in.
+                #[cfg(target_os = "macos")]
+                if had_keyboard {
+                    let _ = app.hide();
                 }
             }
         });
@@ -197,7 +274,7 @@ fn tick(app: &AppHandle) {
     let st = app.state::<AppState>();
     let now = Instant::now();
     let edge = st.config.lock().unwrap().reveal_at_edge;
-    let has_items = st.line.lock().unwrap().len() > 0;
+    let has_items = st.lines.lock().unwrap().len() > 0;
 
     // Window calls may wait on the main thread, so none is made while the
     // lock is held.
@@ -247,7 +324,7 @@ fn tick(app: &AppHandle) {
         return;
     }
     let peeking = c.peek_until.is_some_and(|t| now < t);
-    let held = c.pinned && !c.visited;
+    let held = c.pinned && !c.visited && c.pin_until.is_some_and(|t| now < t);
     if peeking || held {
         c.away_since = None;
         return;

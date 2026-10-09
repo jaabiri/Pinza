@@ -35,6 +35,33 @@ pub fn init_layer_shell(win: &WebviewWindow) -> bool {
     true
 }
 
+/// A layer surface only gets the keyboard when it asks for it.
+pub fn set_keyboard(win: &WebviewWindow, take: bool) {
+    let win = win.clone();
+    let _ = win.clone().run_on_main_thread(move || {
+        let Ok(gtk) = win.gtk_window() else { return };
+        gtk.set_keyboard_mode(if take { KeyboardMode::Exclusive } else { KeyboardMode::None });
+        if take {
+            // The web view inside must hold the focus too, or keys go nowhere.
+            gtk.present();
+            if let Some(child) = gtk.child() {
+                focus_deepest(&child);
+            }
+        }
+    });
+}
+
+fn focus_deepest(widget: &gtk::Widget) {
+    if let Some(container) = widget.downcast_ref::<gtk::Container>() {
+        for child in container.children() {
+            focus_deepest(&child);
+        }
+    }
+    if widget.can_focus() {
+        widget.grab_focus();
+    }
+}
+
 /// Only this part of the window takes the pointer. An empty list lets
 /// everything through.
 pub fn set_input_region(win: &WebviewWindow, rects: Vec<Rect>) {

@@ -11,7 +11,11 @@
     "macOSPrivateApi": true,
     "windows": [],
     "security": {
-      "csp": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'"
+      "csp": "default-src 'self'; img-src 'self' data: asset: http://asset.localhost; media-src 'self' asset: http://asset.localhost; style-src 'self' 'unsafe-inline'",
+      "assetProtocol": {
+        "enable": true,
+        "scope": []
+      }
     }
   },
   "bundle": {
@@ -30,8 +34,16 @@
       "minimumSystemVersion": "11.0"
     },
     "linux": {
-      "deb": { "depends": ["libgtk-layer-shell0"] },
-      "rpm": { "depends": ["gtk-layer-shell"] }
+      "deb": {
+        "depends": [
+          "libgtk-layer-shell0"
+        ]
+      },
+      "rpm": {
+        "depends": [
+          "gtk-layer-shell"
+        ]
+      }
     }
   }
 }

@@ -1,4 +1,4 @@
-//! Notices new screenshots in the watched folders.
+//! Notices new screenshots and screen recordings in the watched folders.
 
 use crate::folders;
 use notify::{RecursiveMode, Watcher};
@@ -13,10 +13,13 @@ use tauri::AppHandle;
 /// several steps. Waiting for a quiet moment avoids reading half a file.
 const SETTLE: Duration = Duration::from_millis(250);
 const RETRIES: u32 = 8;
+/// A recording is done once the file has not changed for this long.
+const VIDEO_SETTLED: Duration = Duration::from_secs(3);
 
 type Known = HashMap<PathBuf, SystemTime>;
 
-pub fn start(app: AppHandle, dirs: Vec<PathBuf>) {
+/// `lines[i]` lists the folders whose new files hang on line `i`.
+pub fn start(app: AppHandle, lines: Vec<Vec<PathBuf>>) {
     thread::spawn(move || {
         let (tx, rx) = mpsc::channel();
         let mut watcher = match notify::recommended_watcher(move |res| {
@@ -28,20 +31,27 @@ pub fn start(app: AppHandle, dirs: Vec<PathBuf>) {
                 return;
             }
         };
-        for dir in &dirs {
-            match watcher.watch(dir, RecursiveMode::NonRecursive) {
-                Ok(()) => log::info!("Watching {}", dir.display()),
-                Err(e) => log::warn!("Cannot watch {}: {e}", dir.display()),
+        // A folder listed for two lines belongs to the first.
+        let mut dirs: Vec<(PathBuf, usize)> = Vec::new();
+        for (line, folders) in lines.iter().enumerate() {
+            for dir in folders {
+                if dirs.iter().any(|(d, _)| d == dir) {
+                    continue;
+                }
+                match watcher.watch(dir, RecursiveMode::NonRecursive) {
+                    Ok(()) => log::info!("Watching {} for line {}", dir.display(), line + 1),
+                    Err(e) => log::warn!("Cannot watch {}: {e}", dir.display()),
+                }
+                dirs.push((dir.clone(), line));
             }
         }
 
         // Only what appears after launch is new.
-        let mut known: Known = dirs.iter().flat_map(|d| listing(d)).collect();
+        let mut known: Known = dirs.iter().flat_map(|(d, _)| listing(d)).collect();
         let mut pending: HashMap<PathBuf, u32> = HashMap::new();
 
         loop {
-            let first = rx.recv();
-            if first.is_err() {
+            if rx.recv().is_err() {
                 return;
             }
             // Collect everything that arrives until things settle.
@@ -56,15 +66,15 @@ pub fn start(app: AppHandle, dirs: Vec<PathBuf>) {
     });
 }
 
-fn scan(app: &AppHandle, dirs: &[PathBuf], known: &mut Known, pending: &mut HashMap<PathBuf, u32>) {
+fn scan(app: &AppHandle, dirs: &[(PathBuf, usize)], known: &mut Known, pending: &mut HashMap<PathBuf, u32>) {
     let mut now: Known = HashMap::new();
-    let mut fresh: Vec<(PathBuf, SystemTime)> = Vec::new();
-    for dir in dirs {
+    let mut fresh: Vec<(PathBuf, SystemTime, usize)> = Vec::new();
+    for (dir, line) in dirs {
         for (path, modified) in listing(dir) {
             match known.get(&path) {
                 None => {
                     if folders::is_candidate(&path, dir) {
-                        fresh.push((path.clone(), modified));
+                        fresh.push((path.clone(), modified, *line));
                     }
                 }
                 Some(old) if *old != modified => crate::refresh(app, &path),
@@ -73,9 +83,18 @@ fn scan(app: &AppHandle, dirs: &[PathBuf], known: &mut Known, pending: &mut Hash
             now.insert(path, modified);
         }
     }
-    fresh.sort_by_key(|(_, t)| *t);
-    for (path, _) in fresh {
-        if crate::hang(app, &path) {
+    fresh.sort_by_key(|(_, t, _)| *t);
+    for (path, modified, line) in fresh {
+        // A recording grows until it is stopped: wait until it settles.
+        if folders::is_video(&path) {
+            let settled = SystemTime::now().duration_since(modified).unwrap_or_default() >= VIDEO_SETTLED;
+            if !settled {
+                pending.insert(path.clone(), 0);
+                now.remove(&path);
+                continue;
+            }
+        }
+        if crate::hang(app, line, &path) {
             pending.remove(&path);
         } else {
             // Not readable yet. Try again shortly, but not forever.
@@ -88,6 +107,7 @@ fn scan(app: &AppHandle, dirs: &[PathBuf], known: &mut Known, pending: &mut Hash
             }
         }
     }
+    pending.retain(|p, _| p.exists());
     if known.keys().any(|p| !now.contains_key(p)) {
         crate::prune(app);
     }
@@ -100,7 +120,7 @@ fn listing(dir: &Path) -> Vec<(PathBuf, SystemTime)> {
         .flatten()
         .filter_map(|e| {
             let meta = e.metadata().ok()?;
-            if !meta.is_file() || !folders::is_image(&e.path()) {
+            if !meta.is_file() || !folders::is_media(&e.path()) {
                 return None;
             }
             Some((e.path(), meta.modified().unwrap_or(SystemTime::UNIX_EPOCH)))
