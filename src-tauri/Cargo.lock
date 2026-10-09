@@ -3060,6 +3060,7 @@ dependencies = [
  "gtk",
  "gtk-layer-shell",
  "image",
+ "libc",
  "log",
  "notify",
  "qrcode",

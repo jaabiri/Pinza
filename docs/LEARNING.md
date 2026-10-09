@@ -330,11 +330,13 @@ design choice, not an accident.
 
 ### 2.13 `unsafe`, only where the OS demands it
 
-**Where:** a single call, [`fullscreen.rs`](../src-tauri/src/fullscreen.rs#L113):
-`unsafe { SHQueryUserNotificationState() }`.
+**Where:** two one-line calls into C:
+- [`fullscreen.rs`](../src-tauri/src/fullscreen.rs#L113): `unsafe { SHQueryUserNotificationState() }` (Windows)
+- [`linux.rs::release_memory`](../src-tauri/src/linux.rs): `unsafe { libc::malloc_trim(0) }` (Linux)
 
-**Why:** Calling a C function from Windows can't be checked by the
-compiler, so `windows-rs` marks it `unsafe`. Pinza keeps it to one line.
+**Why:** Calling a C function can't be checked by the Rust compiler, so
+the bindings mark it `unsafe`. Pinza keeps each one to a single line inside
+a small, safe function.
 Everything else is safe Rust, even though the app talks to three operating
 systems, because the crates wrap the unsafe parts for you.
 
@@ -534,6 +536,31 @@ cd .. && npm run build          # installers
 - **CI builds for three OSes** with `tauri-action`: [`.github/workflows/pinza.yml`](../.github/workflows/pinza.yml) · <https://github.com/tauri-apps/tauri-action>
 
 ---
+
+### Measuring before optimising
+
+The [Performance](../README.md#performance) section of the README came from
+measuring, not guessing, and two of the first guesses were wrong. How it
+was done:
+
+- **CPU and memory per process** from `/proc/<pid>/stat` (user + system
+  time) and `/proc/<pid>/smaps_rollup` (PSS: memory shared between
+  processes is split fairly between them), summed over Pinza and its WebKit
+  child processes.
+- **Bisecting**: idle with an empty line (0 %) against idle with photos
+  (7 %), then with sound on and off, until one change explained it all. The
+  culprit was an open Web Audio `AudioContext`, not the CSS blur suspected
+  first.
+- **Tracing**: a temporary command logged, once a second, how many
+  animation frames ran and how many CSS animations were active. "Zero
+  frames, yet 7 % CPU" ruled out our own code.
+- **Memory**: `malloc_trim` returns memory the C allocator kept after large
+  image decodes on worker threads.
+  <https://man7.org/linux/man-pages/man3/malloc_trim.3.html>
+
+Reading: `proc(5)` <https://man7.org/linux/man-pages/man5/proc.5.html>
+· Brendan Gregg, *Systems Performance*: <https://www.brendangregg.com/systems-performance-2nd-edition-book.html>
+· The Rust Performance Book: <https://nnethercote.github.io/perf-book/>
 
 ## 8. Exercises
 

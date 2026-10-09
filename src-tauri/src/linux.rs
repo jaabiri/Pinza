@@ -106,3 +106,11 @@ pub fn watch_pointer(win: &WebviewWindow, app: tauri::AppHandle) {
 pub fn has(cmd: &str) -> bool {
     std::env::var_os("PATH").is_some_and(|paths| std::env::split_paths(&paths).any(|d| d.join(cmd).is_file()))
 }
+
+/// Decoding a big screenshot on a worker thread leaves the freed memory
+/// parked in that thread's allocator arena. Hand it back to the system.
+pub fn release_memory() {
+    unsafe {
+        libc::malloc_trim(0);
+    }
+}

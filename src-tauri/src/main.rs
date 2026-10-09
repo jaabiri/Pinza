@@ -101,6 +101,8 @@ pub fn hang(app: &AppHandle, line: usize, path: &Path) -> bool {
     emit_items(app);
     let _ = app.emit("hung", Hung { id });
     controller::reveal(app, Reveal::Peek(Duration::from_millis(2500)));
+    #[cfg(target_os = "linux")]
+    linux::release_memory();
     true
 }
 
@@ -165,6 +167,8 @@ fn start_reader(app: AppHandle, rx: mpsc::Receiver<PathBuf>) {
                 Ok(lines) => st.history.lock().unwrap().set_text(&next, ocr::text_of(&lines)),
                 Err(e) => log::warn!("Could not read {}: {e}", next.display()),
             }
+            #[cfg(target_os = "linux")]
+            linux::release_memory();
             // Stay gentle on the machine.
             std::thread::sleep(Duration::from_millis(300));
         }

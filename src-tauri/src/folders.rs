@@ -33,7 +33,7 @@ fn recording_folders(configured: &[PathBuf]) -> Vec<PathBuf> {
     if !configured.is_empty() {
         return Vec::new();
     }
-    let mut v = Vec::new();
+    let mut v: Vec<PathBuf> = Vec::new();
     #[cfg(target_os = "linux")]
     {
         // Omarchy's screen recorder writes to $OMARCHY_SCREENRECORD_DIR or Videos.

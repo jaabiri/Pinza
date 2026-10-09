@@ -245,6 +245,43 @@ To let clicks through everywhere except the photos:
   going. While the line is tucked away, a 4 px strip along the top catches
   the pointer.
 
+## Performance
+
+Measured on Linux (Wayland, release build, 8 screenshots of 2560×1600 on
+the line). The test machine renders without a GPU, so the animation figures
+are a worst case; with a GPU, WebKit composites on the graphics card.
+
+| | Pinza |
+|:--|:--|
+| Install size | 3.9 MB `.deb`, 9 MB binary |
+| Start-up | ~0.2 s warm, ~3.5 s first launch (cold disk cache) |
+| Screenshot → on the line | ~0.5 s, 0.25 s of which is a deliberate wait for the file to finish writing |
+| Idle, line tucked away | **< 1 % of one core** |
+| Idle, line down and still | ~1 % |
+| While photos swing (breeze, arrival) | 30–60 % of one core *without a GPU*, for a few seconds |
+| New screenshot (decode, thumbnail, read text) | a burst of about 1 s |
+| Memory (PSS, all processes) | ~300 MB: Pinza 125 MB, WebKit 155 MB, WebKit network 20 MB |
+
+**Compared with a native app.** Tendedero, the Swift app this comes from,
+is 1.7 MB, and a native AppKit/SwiftUI menu bar app of this kind typically
+uses tens of MB of memory, with Core Animation doing the swing on the GPU.
+Pinza pays for running on three systems from one codebase with a web view:
+
+- **Memory is the real cost**, several times a native app's. Most of it is
+  the web engine (WebKitGTK here, WKWebView on macOS, WebView2 on Windows),
+  which is a separate process and isn't shared with your browser.
+- **CPU at rest is on par**: under 1 % once nothing moves.
+- **Animation costs more than Core Animation**, especially without a GPU,
+  but only while something actually moves.
+- Against Electron, Pinza is far lighter: no bundled Chromium, a few MB to
+  download instead of 100+.
+
+Fixed while measuring: an open Web Audio context kept an audio thread busy
+(about 7 % of a core, forever, after the first chime); it is now suspended
+after each sound. Decoded screenshots left memory in allocator arenas (+45 MB);
+it is now handed back. The swing stops drawing below 0.1°, where it can't
+be seen.
+
 ## Privacy
 
 Everything runs on your machine. Text is read on the device. The only

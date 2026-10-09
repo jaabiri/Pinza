@@ -73,6 +73,7 @@ const CHECK =
 // ---------------------------------------------------------------- Rope
 
 function drawRope() {
+  lastSize = `${window.innerWidth}x${window.innerHeight}`;
   const w = window.innerWidth;
   const top = Layout.ropeTop;
   const d = `M -20 ${top} Q ${w / 2} ${top + 2 * Layout.sag(w)} ${w + 20} ${top}`;
@@ -240,7 +241,8 @@ function frame(now) {
       peg.velocity += a * h;
       peg.angle += peg.velocity * h;
     }
-    if (Math.abs(peg.angle) < 0.02 && Math.abs(peg.velocity) < 0.05) {
+    // Below a tenth of a degree the swing can't be seen; stop drawing it.
+    if (Math.abs(peg.angle) < 0.1 && Math.abs(peg.velocity) < 0.3) {
       peg.angle = 0;
       peg.velocity = 0;
     } else {
@@ -615,9 +617,16 @@ document.addEventListener("keydown", (e) => {
 
 let lastShapes = "";
 
+/** A rectangle snapped outwards to an 8 px grid, so a photo swinging by a
+ * degree or two doesn't send a new shape to Rust on every frame. */
 function rectOf(el, pad = 0) {
   const r = el.getBoundingClientRect();
-  return { x: r.left - pad, y: r.top - pad, w: r.width + pad * 2, h: r.height + pad * 2 };
+  const G = 8;
+  const x = Math.floor((r.left - pad) / G) * G;
+  const y = Math.floor((r.top - pad) / G) * G;
+  const right = Math.ceil((r.right + pad) / G) * G;
+  const bottom = Math.ceil((r.bottom + pad) / G) * G;
+  return { x, y, w: right - x, h: bottom - y };
 }
 
 /** Everything that should take clicks: photos, and any open panel. */
@@ -743,6 +752,7 @@ function chime(kind) {
   if (!settings.sound) return;
   try {
     audio ??= new AudioContext();
+    if (audio.state === "suspended") audio.resume();
     const t = audio.currentTime;
     const osc = audio.createOscillator();
     const gain = audio.createGain();
@@ -760,6 +770,12 @@ function chime(kind) {
     osc.connect(gain).connect(audio.destination);
     osc.start(t);
     osc.stop(t + 0.2);
+    // An open audio context keeps an audio thread busy rendering silence,
+    // which costs several percent of a core for as long as Pinza runs.
+    // Suspend it as soon as the chime has played.
+    osc.onended = () => {
+      if (audio.state === "running") audio.suspend();
+    };
   } catch {
     // No audio device: stay quiet.
   }
@@ -830,7 +846,14 @@ async function init() {
   setTimeout(breeze, 9000);
 }
 
+// Changing the input region can fire a resize with the same size; only a
+// real change of size should lay the line out again, or the two feed each
+// other and the line never stops animating.
+let lastSize = "";
 window.addEventListener("resize", () => {
+  const size = `${window.innerWidth}x${window.innerHeight}`;
+  if (size === lastSize) return;
+  lastSize = size;
   drawRope();
   layout();
   settleFor(600);
